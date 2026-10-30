@@ -496,7 +496,7 @@
     user-select: none;
   }
 </style>
-<meta name="impulso-form-version" content="v1.0.1">
+<meta name="impulso-form-version" content="v1.1.0">
 </head>
 <body>
 <div class="container">
@@ -694,6 +694,9 @@
   const MAX_EMAIL_ATTEMPTS = 3;
   const MAX_PDF_BASE64    = 8500000;
 
+  let impulsoAccountLaunch = false; // autorização de sessão central, sem novo cadastro
+  let impulsoLaunchGrant = "";
+  let impulsoLaunchBase = "";
   let autoSendInProgress  = false;
   let autoSendDone        = false;
   let emailSendAttempts   = 0;
@@ -1465,6 +1468,23 @@
 
       backendSubmissionAttempted = true;
       const result = await postResultToScript(payload);
+      // O Google continua responsável pelo relatório original. O recibo abaixo
+      // é separado, idempotente e não afirma que o PDF foi validado pela Central.
+      if(impulsoAccountLaunch&&impulsoLaunchGrant&&result&&result.ok!==false){
+        try{
+          const confirmed=await fetch(impulsoLaunchBase+"/api/cliente/registrar-gestao-tempo",{
+            method:"POST",mode:"cors",credentials:"omit",headers:{"Content-Type":"application/json"},
+            body:JSON.stringify({grant:impulsoLaunchGrant,providerAcknowledged:true})
+          });
+          const receipt=await confirmed.json();
+          if(!confirmed.ok||receipt.ok!==true)throw Error(receipt.error||"Recibo indisponível");
+          impulsoLaunchGrant="";
+        }catch(error){
+          // Não submeter novamente ao Google após sucesso: evitar e-mails/PDF duplicados.
+          console.warn("Recibo de acompanhamento pendente",error instanceof Error?error.name:"erro");
+          setStatus("O resultado foi processado pelo Google, mas o registro administrativo ainda exige conferência. Não refaça esta pesquisa.", "error");
+        }
+      }
       const mailOutcome = determineMailProcessingOutcome(result);
 
       autoSendDone = true; // impede uma segunda gravação automática da mesma avaliação
@@ -1571,6 +1591,9 @@
   // VALIDAÇÃO
   // ═══════════════════════════════════════════════════════════
   function validateIntro() {
+    // Quando a Central autenticada entrega identidade por ticket de uso único,
+    // não exigir novamente dados cadastrais e demográficos do participante.
+    if(impulsoAccountLaunch)return !!elName.value.trim()&&validateEmail(elEmail.value.trim())&&elWhatsapp.value.replace(/\D/g,"").length>=10;
     const name = elName.value.trim();
     const wa   = elWhatsapp.value.trim();
     const mail = elEmail.value.trim();
@@ -1869,6 +1892,10 @@
   // REINICIAR — cloneNode para zero listeners duplicados
   // ═══════════════════════════════════════════════════════════
   function restartTest() {
+    if(impulsoAccountLaunch){
+      window.location.assign((impulsoLaunchBase||"https://impulso-portal-staging.impulsoflow-f91.workers.dev")+"/minha-conta");
+      return;
+    }
     ["name","whatsapp","email","profession","age"].forEach(id => {
       document.getElementById(id).value = "";
     });
@@ -1894,11 +1921,54 @@
   }
 
   // ═══════════════════════════════════════════════════════════
+  // SESSÃO IMPULSO: ingresso por ticket assinado, sem recadastro
+  // ═══════════════════════════════════════════════════════════
+  async function enterFromImpulsoAccount(){
+    const fragments=new URLSearchParams(window.location.hash.slice(1));
+    const token=fragments.get("impulso_lancamento")||"";
+    if(!/^[a-f0-9]{48}$/.test(token))return;
+    const staging=fragments.get("impulso_ambiente")==="staging";
+    // O ticket sai do fragmento para não vazar em cópias de links e capturas de histórico.
+    window.history.replaceState(null,"",window.location.pathname+window.location.search);
+    const base=staging?"https://impulso-portal-staging.impulsoflow-f91.workers.dev":"https://impulso.ibavsa.org.br";
+    const endpoint=base+"/api/cliente/resgatar-lancamento";
+    async function redeem(phase){
+      const response=await fetch(endpoint,{method:"POST",mode:"cors",credentials:"omit",
+        headers:{"Content-Type":"application/json"},body:JSON.stringify({token,phase})});
+      const result=await response.json();
+      if(!response.ok||result.ok!==true)throw Error(result.error||"Autorização indisponível.");
+      return result;
+    }
+    btnStart.disabled=true;
+    try{
+      const preview=await redeem("preview");
+      if(preview.researchId!=="gestao-tempo")throw Error("Pesquisa diferente da autorizada.");
+      elName.value=preview.name||"";
+      elEmail.value=preview.email||"";
+      elWhatsapp.value=preview.whatsapp||"";
+      if(!validateEmail(elEmail.value)||elWhatsapp.value.replace(/\D/g,"").length<10)throw Error("Identificação da conta incompleta.");
+      const start=await redeem("start");
+      if(start.researchId!=="gestao-tempo"||!start.grant)throw Error("Acesso não confirmado.");
+      impulsoLaunchGrant=start.grant;
+      impulsoLaunchBase=base;
+      impulsoAccountLaunch=true;
+      showStep(stepQuiz);renderQuestion();updateProgressUI();
+    }catch(error){
+      const msg=error instanceof Error?error.message:"Acesso indisponível.";
+      const help=document.createElement("p");
+      help.setAttribute("role","alert");help.style.color="#b91c1c";
+      help.textContent="Não foi possível validar o acesso pela sua conta: "+msg+" Retorne à plataforma Impulso.";
+      stepIntro.prepend(help);
+    }finally{btnStart.disabled=false;}
+  }
+
+  // ═══════════════════════════════════════════════════════════
   // INICIALIZAÇÃO
   // ═══════════════════════════════════════════════════════════
   renderQuestion();
   updateProgressUI();
+  void enterFromImpulsoAccount();
 </script>
-<div id="impulso-form-version" class="impulso-form-version" data-survey="gestao-tempo" aria-label="Versão do formulário Gestão no Tempo" title="Versão do formulário Gestão no Tempo">Formulário v1.0.1</div>
+<div id="impulso-form-version" class="impulso-form-version" data-survey="gestao-tempo" aria-label="Versão do formulário Gestão no Tempo" title="Versão do formulário Gestão no Tempo">Formulário v1.1.0</div>
 </body>
 </html>

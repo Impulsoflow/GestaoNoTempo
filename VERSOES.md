@@ -1,5 +1,8 @@
 # Histórico de versões — Gestão no Tempo
 
+## v1.1.0 — 30/10/2026
+Integração de entrada a partir da conta autenticada IMPULSOFLOW por ticket temporário e de uso único. Nome, e-mail e WhatsApp passam a ser fornecidos pela Central; o formulário não solicita novo cadastro ao acessar por essa rota. A entrada direta pública continua sujeita à verificação de acesso existente. Perguntas, cálculos, relatório e integração Google originais preservados.
+
 ## v1.0.1 — 17/10/2026
 Correção da nomenclatura comercial para **Gestão no Tempo**, rodapé e metadados. Sem alterações no questionário, respostas históricas, envio de PDF ou backend.
 
