@@ -496,7 +496,7 @@
     user-select: none;
   }
 </style>
-<meta name="impulso-form-version" content="v1.2.1">
+<meta name="impulso-form-version" content="v1.2.2">
 </head>
 <body>
 <div class="container">
@@ -1495,22 +1495,30 @@
       const result = await postResultToScript(payload);
       // O Google continua responsável pelo relatório original. O recibo abaixo
       // é separado, idempotente e não afirma que o PDF foi validado pela Central.
+      let sourcePdfLinked=!impulsoAccountLaunch;
       if(impulsoAccountLaunch&&impulsoLaunchGrant&&result&&result.ok!==false){
-        try{
-          const confirmed=await fetch(impulsoLaunchBase+"/api/cliente/registrar-gestao-tempo",{
-            method:"POST",mode:"cors",credentials:"omit",headers:{"Content-Type":"application/json"},
-            body:JSON.stringify({grant:impulsoLaunchGrant,providerAcknowledged:true,sourceRow:Number(result.rowIndex)})
-          });
-          const receipt=await confirmed.json();
-          if(!confirmed.ok||receipt.ok!==true)throw Error(receipt.error||"Recibo indisponível");
-          impulsoLaunchGrant="";
-        }catch(error){
-          // Não submeter novamente ao Google após sucesso: evitar e-mails/PDF duplicados.
-          console.warn("Recibo de acompanhamento pendente",error instanceof Error?error.name:"erro");
-          setStatus("O resultado foi processado pelo Google, mas o registro administrativo ainda exige conferência. Não refaça esta pesquisa.", "error");
+        // Nunca enviar a pesquisa novamente ao Google para procurar o arquivo.
+        // Apenas repetir a ligação idempotente até a linha da planilha ficar visível.
+        const sourceRow=Number(result.rowIndex??result.rowNumber??result.sourceRow??result.row);
+        if(Number.isSafeInteger(sourceRow)&&sourceRow>=2){
+          for(let retry=0;retry<4&&!sourcePdfLinked;retry++){
+            try{
+              const confirmed=await fetch(impulsoLaunchBase+"/api/cliente/registrar-gestao-tempo",{
+                method:"POST",mode:"cors",credentials:"omit",headers:{"Content-Type":"application/json"},
+                body:JSON.stringify({grant:impulsoLaunchGrant,providerAcknowledged:true,sourceRow})
+              });
+              const receipt=await confirmed.json();
+              if(!confirmed.ok||receipt.ok!==true)throw Error(receipt.error||"Recibo indisponível");
+              if(receipt.pdfLinked===true){sourcePdfLinked=true;impulsoLaunchGrant="";break;}
+            }catch(error){console.warn("Reconciliação do PDF Google pendente",error instanceof Error?error.name:"erro");}
+            if(retry<3)await wait(1200*(retry+1));
+          }
+        }else{
+          // O serviço produtor pode reconhecer o PDF sem informar o número da linha.
+          console.warn("Gestão: recebimento do PDF sem índice verificável de origem.");
         }
       }
-      const mailOutcome = determineMailProcessingOutcome(result);
+            const mailOutcome = determineMailProcessingOutcome(result);
 
       autoSendDone = true; // impede uma segunda gravação automática da mesma avaliação
       if (mailOutcome.state === "failed") {
@@ -1519,7 +1527,8 @@
         return;
       }
       document.getElementById("delivery-message").textContent = mailOutcome.message;
-      document.getElementById("auto-send-status").textContent = "";
+      if(sourcePdfLinked){document.getElementById("auto-send-status").textContent = "";}
+      else setStatus("O PDF foi gerado no Google, mas sua associação à conta ainda não foi confirmada. Baixe uma cópia e solicite a conferência da linha original no administrativo. Não refaça a pesquisa.", "error");
       document.getElementById("final-success-message").style.display = "block";
 
     } catch (e) {
@@ -2003,7 +2012,7 @@
   // Ingresso unificado: a integração compartilhada exibe Iniciar sem consumir o ticket antes do clique.
   // Não executar enterFromImpulsoAccount(), pois ela resgatava o ticket ao carregar a página.
 </script>
-<div id="impulso-form-version" class="impulso-form-version" data-survey="gestao-tempo" aria-label="Versão do formulário Gestão no Tempo" title="Versão do formulário Gestão no Tempo">Formulário v1.2.1</div>
+<div id="impulso-form-version" class="impulso-form-version" data-survey="gestao-tempo" aria-label="Versão do formulário Gestão no Tempo" title="Versão do formulário Gestão no Tempo">Formulário v1.2.2</div>
 <script src="https://impulso-portal-staging.impulsoflow-f91.workers.dev/impulso-login-unico.js" data-impulso-research="gestao-tempo" defer></script>
 </body>
 </html>
