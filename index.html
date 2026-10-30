@@ -1673,6 +1673,13 @@
       whatsapp: elWhatsapp.value.trim(),
       button: btnStart,
       onAllowed: () => {
+        // O ingresso unificado só é consumido após o clique em Iniciar.
+        // A sessão foi validada no gateway IMPULSO, sem novo cadastro.
+        if(window.ImpulsoAccountBridge?.active){
+          impulsoLaunchGrant=window.ImpulsoAccountBridge.grant;
+          impulsoLaunchBase="https://impulso-portal-staging.impulsoflow-f91.workers.dev";
+          impulsoAccountLaunch=true;
+        }
         showStep(stepQuiz);
         renderQuestion();
         updateProgressUI();
@@ -1993,8 +2000,10 @@
   // ═══════════════════════════════════════════════════════════
   renderQuestion();
   updateProgressUI();
-  void enterFromImpulsoAccount();
+  // Ingresso unificado: a integração compartilhada exibe Iniciar sem consumir o ticket antes do clique.
+  // Não executar enterFromImpulsoAccount(), pois ela resgatava o ticket ao carregar a página.
 </script>
 <div id="impulso-form-version" class="impulso-form-version" data-survey="gestao-tempo" aria-label="Versão do formulário Gestão no Tempo" title="Versão do formulário Gestão no Tempo">Formulário v1.2.0</div>
+<script src="https://impulso-portal-staging.impulsoflow-f91.workers.dev/impulso-login-unico.js" data-impulso-research="gestao-tempo" defer></script>
 </body>
 </html>
