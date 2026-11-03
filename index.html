@@ -1493,6 +1493,22 @@
 
       backendSubmissionAttempted = true;
       const result = await postResultToScript(payload);
+      let portalArtifactsOk=true;
+      if(window.ImpulsoAccountBridge?.active&&impulsoLaunchGrant){
+        try{
+          await window.ImpulsoAccountBridge.saveReportPdf(base64);
+          const saved=await window.ImpulsoAccountBridge.saveMiniSummary({
+            circunstancia:data.percentages.A,
+            importancia:data.percentages.B,
+            urgencia:data.percentages.C,
+            headline:prof.nome
+          });
+          if(!saved)throw new Error("Resumo não confirmado pela Central.");
+        }catch(error){
+          portalArtifactsOk=false;
+          console.warn("Artefatos da conta IMPULSO pendentes",error instanceof Error?error.message:"erro");
+        }
+      }
       // O Google continua responsável pelo relatório original. O recibo abaixo
       // é separado, idempotente e não afirma que o PDF foi validado pela Central.
       let sourcePdfLinked=!impulsoAccountLaunch;
@@ -1528,7 +1544,8 @@
       }
       document.getElementById("delivery-message").textContent = mailOutcome.message;
       if(sourcePdfLinked){document.getElementById("auto-send-status").textContent = "";}
-      else setStatus("O PDF foi gerado no Google, mas sua associação à conta ainda não foi confirmada. Baixe uma cópia e solicite a conferência da linha original no administrativo. Não refaça a pesquisa.", "error");
+      else if(portalArtifactsOk)setStatus("PDF e resumo salvos na conta IMPULSO. A conferência da origem Google continua pendente; não refaça a pesquisa.", "success");
+      else setStatus("O PDF foi gerado, mas a sincronização com a conta IMPULSO ainda não foi confirmada. Baixe uma cópia e não refaça a pesquisa.", "error");
       document.getElementById("final-success-message").style.display = "block";
 
     } catch (e) {
